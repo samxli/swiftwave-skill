@@ -1,0 +1,4 @@
+schema.json
+*.tar
+*.tar.gz
+.env
