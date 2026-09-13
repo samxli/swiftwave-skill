@@ -78,13 +78,19 @@ else
   case "$_sw_script_path" in
     */*) _sw_script_dir="$(cd "$(dirname "$_sw_script_path")" && pwd)" ;;
   esac
-  for _f in "./.env.swiftwave" "${HOME:-}/.config/swiftwave/env" "${_sw_script_dir}/.env.swiftwave"; do
+  # sw-env.sh lives in <skill-dir>/scripts/; the bundled env file sits one
+  # level up in <skill-dir>/.env.swiftwave.
+  _sw_skill_dir=""
+  if [ -n "$_sw_script_dir" ]; then
+    _sw_skill_dir="$(cd "${_sw_script_dir}/.." && pwd)"
+  fi
+  for _f in "./.env.swiftwave" "${HOME:-}/.config/swiftwave/env" "${_sw_skill_dir}/.env.swiftwave"; do
     if [ -n "$_f" ] && [ -f "$_f" ]; then
       _sw_load_env_file "$_f"
       break
     fi
   done
-  unset _sw_script_path _sw_script_dir 2>/dev/null || true
+  unset _sw_script_path _sw_script_dir _sw_skill_dir 2>/dev/null || true
 fi
 unset -f _sw_load_env_file 2>/dev/null || true
 
