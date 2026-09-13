@@ -1,24 +1,51 @@
 # swiftwave-skill
 
-Agent skill for operating **SwiftWave v2** via **CLI + API**, co-located
-on the same server SwiftWave runs on. No dashboard/UI coverage.
-Works with opencode, Claude Code, and any harness that loads
-`SKILL.md`-style skills (e.g. `~/.agents/skills`).
+Teach your AI coding agent to run a **SwiftWave v2** PaaS for you — deploy
+apps, wire up domains and TLS, manage volumes and logs — safely, from the
+terminal. No dashboard clicking.
 
-## Layout
+It works in two modes:
 
-```text
-swiftwave/               <- the skill (name must stay `swiftwave`)
-  SKILL.md
-  scripts/               <- sw-env.sh, sw-login.sh, sw-graphql.sh, sw-upload-code.sh, sw-wait-deployment.sh, sw-introspect.sh, sw-doctor.sh
-  references/            <- cli-reference.md, rest-api.md, graphql.md, config-reference.md, stack-spec.md, multi-app.md
-```
+| Mode | Agent runs on... | How it talks to SwiftWave |
+|---|---|---|
+| **Co-located** | the same server as SwiftWave | `swiftwave` CLI + local API (`127.0.0.1:3333`) |
+| **Remote** | your laptop / CI / anywhere | the API over the network (`SW_HOST=<server-ip>`) |
 
-## Install
+Works with [opencode](https://opencode.ai), Claude Code, and any harness
+that loads `SKILL.md`-style skills.
 
-The skill is the `swiftwave/` directory (it must keep that name — it
-matches `name:` in `SKILL.md` frontmatter). Copy it into whichever
-harness you use:
+> New to SwiftWave? It's an open-source platform (like a self-hosted Heroku)
+> that deploys apps from source code or Docker images onto Docker Swarm:
+> [swiftwave.org](https://swiftwave.org).
+
+---
+
+## What your agent can do
+
+Once the skill is installed, just ask in plain language:
+
+- *"List my apps and show which are running"*
+- *"Deploy this folder as an app and put it on app.example.com with HTTPS"*
+- *"Show me the logs of the failed deployment"* (works remotely too)
+- *"Create a postgres database app and connect my app to it"*
+- *"Check the server's health and tell me why builds fail"*
+
+## Requirements
+
+Just two things on the machine where the agent runs:
+
+- `bash`
+- `curl` + `python3`
+
+That's it — no extra packages, no pip installs. The `swiftwave` binary is
+only needed in co-located mode.
+
+## Quick start
+
+### 1. Install the skill
+
+The skill is the `swiftwave/` directory (the name must stay `swiftwave`).
+Copy it into whichever harness you use:
 
 ```bash
 # opencode: project skill
@@ -29,7 +56,7 @@ cp -r swiftwave .opencode/skills/
 mkdir -p ~/.config/opencode/skills
 cp -r swiftwave ~/.config/opencode/skills/
 
-# generic agents harness (e.g. opencode external skills, other agents)
+# generic agents harness (other agents too)
 mkdir -p ~/.agents/skills
 cp -r swiftwave ~/.agents/skills/
 
@@ -47,7 +74,83 @@ Or, for opencode, point config at this repo in `opencode.jsonc`:
 }
 ```
 
-Then quit and restart the harness (skills are loaded at startup).
+Then restart the harness (skills load at startup).
+
+### 2. Give it credentials
+
+**Co-located** (agent on the SwiftWave server): nothing to configure —
+scripts default to `127.0.0.1:3333` and auto-detect http/https.
+
+**Remote** (agent somewhere else): point it at the server and log in with
+any SwiftWave account the server admin creates for you:
+
+```bash
+export SW_HOST=your-server.example.com
+export SW_USER=myuser
+export SW_PASS='...'
+```
+
+Prefer `https` (SwiftWave's `use_tls`) or an SSH tunnel — over plain
+`http` your password travels unencrypted, and the skill will warn you.
+
+### 3. Try it
+
+Ask your agent, or run the scripts yourself:
+
+```bash
+source scripts/sw-env.sh
+export SW_TOKEN="$(./scripts/sw-login.sh)"     # login, token stays in env
+./scripts/sw-doctor.sh                          # health check
+./scripts/sw-graphql.sh '{ applications { id name } }'
+./scripts/sw-logs.sh deployment <deployment-id> # build/deploy logs
+```
+
+## The scripts
+
+| Script | What it does |
+|---|---|
+| `sw-env.sh` | Shared config — source it first (host, port, scheme, remote detection) |
+| `sw-login.sh` | Log in, print JWT to stdout only |
+| `sw-graphql.sh` | Run any GraphQL query/mutation |
+| `sw-logs.sh` | Stream deployment or container logs (websocket, remote-friendly) |
+| `sw-upload-code.sh` | Tar + upload a source folder with a Dockerfile |
+| `sw-wait-deployment.sh` | Poll a deployment until it succeeds or fails |
+| `sw-doctor.sh` | Read-only health check: API, image registry, server status |
+| `sw-introspect.sh` | Check whether GraphQL introspection is enabled (normally off) |
+
+All scripts read configuration from environment variables only —
+`SW_HOST`, `SW_PORT`, `SW_SCHEME`, `SW_INSECURE`, `SW_USER`, `SW_PASS`,
+`SW_TOKEN`. Nothing is hardcoded, nothing is written to disk.
+
+## What works remotely (and what doesn't)
+
+| Task | Co-located | Remote |
+|---|---|---|
+| Deploy apps, domains, TLS, volumes, ingress | ✅ API | ✅ API |
+| Users (create/delete), server status, restart | ✅ | ✅ GraphQL |
+| Deployment & runtime logs | ✅ | ✅ `sw-logs.sh` |
+| Task queue, TLS daemon certs, db-migrate, snapshots, postgres/registry control | ✅ CLI | ❌ needs server access |
+
+## Safety notes — please read
+
+- **SwiftWave v2 has no role system.** Every account is effectively an
+  admin: `deleteUser` can remove *any* user, including the first admin,
+  with no confirmation. Treat credentials like root passwords, and keep
+  server access as your recovery path.
+- Destructive operations (app destroy, volume delete/restore, user
+  delete, service restart, `init --overwrite`) always require your
+  explicit confirmation — the skill instructs the agent to ask first.
+- Never commit tokens, passwords, or the server's
+  `/var/lib/swiftwave/config.yml` contents. Scripts never print secrets.
+
+## Layout
+
+```text
+swiftwave/               <- the skill (name must stay `swiftwave`)
+  SKILL.md               <- the instructions your agent reads
+  scripts/               <- bash + curl + python3 helpers (see table above)
+  references/            <- CLI, REST, GraphQL, config, stack, multi-app docs
+```
 
 ## Harness compatibility
 
@@ -64,21 +167,14 @@ Kept portable on purpose — please preserve these when editing:
 
 ## Version pin
 
-Targets SwiftWave `v2` branch (latest known `2.23.1-1`).
-Local `swiftwave --help` is source of truth; `swiftwave.org/docs/2.1.x`
-is fallback. GraphQL introspection is disabled on stock v2 — after
-upgrades, diff the versioned schema
+Targets SwiftWave `v2` branch (latest known `2.23.1-1`, tested against a
+live instance). Local `swiftwave --help` is source of truth;
+`swiftwave.org/docs/2.1.x` is fallback. GraphQL introspection is disabled
+on stock v2 — after upgrades, diff the versioned schema
 (`swiftwave_service/graphql/schema/*.graphqls` in the repo) instead of
 relying on a snapshot; `scripts/sw-introspect.sh` just tells you if
 introspection got enabled.
 
-## Requirements
+## License
 
-`curl` + `python3` on the agent host (`jq` optional — scripts use python
-for JSON). All scripts default to co-located access
-(`127.0.0.1:3333`, scheme auto-detected from daemon TLS state).
-
-## Security
-
-Scripts use env vars only (`SW_HOST`, `SW_USER`, `SW_PASS`).
-Never commit tokens, passwords, or `/var/lib/swiftwave/config.yml` contents.
+Apache-2.0 — see [LICENSE](LICENSE).

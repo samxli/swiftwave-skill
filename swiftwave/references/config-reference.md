@@ -1,5 +1,13 @@
 # Local config reference (co-located, redacted)
 
+CO-LOCATED ONLY — this file lives on the server (root-only, contains
+secrets) and is unreachable in remote mode. Remote operators instead get:
+registry address via `SW_REGISTRY_ADDR` (default `<SW_HOST>:3334`, must
+match the builder's derivation below) and registry
+username/password shared by the server operator from
+`local_image_registry` (needed for remote `docker push`; the values are
+not exposed via any API).
+
 ## Paths
 
 - Daemon config: `/var/lib/swiftwave/config.yml` (root-only, contains secrets)

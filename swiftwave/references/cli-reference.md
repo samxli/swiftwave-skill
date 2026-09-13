@@ -1,5 +1,11 @@
 # CLI reference (SwiftWave v2, local binary)
 
+CO-LOCATED ONLY — the `swiftwave` binary needs local systemd, postgres,
+and config access. From a remote machine use the GraphQL equivalents in
+`SKILL.md` § "Remote equivalents" (users, servers status, restartSystem)
+plus `scripts/sw-logs.sh`; `tq`/`tls`/`db-migrate`/`snapshot`/
+`auto-update`/`postgres`/`localregistry` have no API at all.
+
 Source of truth: `swiftwave [cmd] --help` on this host.
 Binary: `/usr/bin/swiftwave`. No `--version` flag.
 

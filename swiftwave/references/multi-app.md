@@ -14,8 +14,10 @@ image app and connect over swarm DNS at `<app-name>:<port>`. Proven with
   for postgres). The volume outlives the app; deleting it wipes the data.
 - No ingress rule needed for internal-only access. No `dockerfile`
   (pass `""`), no build.
-- Verify at container level, not via `realtimeInfo` (it lags):
-  `docker exec $(docker ps -q -f name=<app>.1.) pg_isready -U <user>`.
+- Verify readiness: co-located via container
+  (`docker exec $(docker ps -q -f name=<app>.1.) pg_isready -U <user>`);
+  remote via `scripts/sw-logs.sh runtime <app-id>` (look for postgres'
+  "ready to accept connections") — `realtimeInfo` itself lags.
 
 ## Consumer app
 
@@ -28,9 +30,9 @@ image app and connect over swarm DNS at `<app-name>:<port>`. Proven with
 
 ## Notes
 
-- For pulls from the local registry (`127.0.0.1:3334/...`), store an
-  `ImageRegistryCredential` first and reference it; public Hub images need
-  none.
+- For pulls from the local registry (co-located `127.0.0.1:3334`, remote
+  `<SW_HOST>:3334`), store an `ImageRegistryCredential` first and
+  reference it; public Hub images need none.
 - To rotate DB credentials: `updateApplication` on BOTH apps with the new
   env values (each update enqueues a redeploy that re-creates the
   container with the new env — a plain restart does not re-render env),
