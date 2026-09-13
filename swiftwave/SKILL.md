@@ -19,6 +19,12 @@ dashboard/UI operations.
   `swiftwave` CLI, no `/var/lib/swiftwave/config.yml`. Auth needs an
   account on the target server (`SW_USER`/`SW_PASS` → `sw-login.sh`);
   any account works (see RBAC warning below).
+- **Config file instead of exports**: keep credentials in an env file —
+  `./.env.swiftwave` (project) or `~/.config/swiftwave/env` (user), or
+  point `SW_ENV_FILE` at any path. Template: `env.example`. Only `SW_*`
+  keys are read; the real environment always wins over the file.
+  `chmod 600` it (scripts warn on loose perms). YAML is deliberately
+  not supported (would add a PyYAML dependency).
 - Remote transport: prefer `SW_SCHEME=https` (self-signed cert,
   `SW_INSECURE=1` handles it) or an SSH tunnel
   (`ssh -L 3333:127.0.0.1:3333 user@server` + default `SW_HOST`).
@@ -139,7 +145,9 @@ auto-detected unless set, `SW_INSECURE=1` default for self-signed cert,
 `python3` only (no jq, no pip packages). Source `sw-env.sh` for defaults:
 
 - `sw-env.sh` — shared env, dep check, scheme probe, remote detection
-  (`SW_REMOTE=1`), cleartext warning, base URL derivation
+  (`SW_REMOTE=1`), cleartext warning, base URL derivation; also loads
+  `SW_*` from an env file (`SW_ENV_FILE` > `./.env.swiftwave` >
+  `~/.config/swiftwave/env`; shell env wins)
 - `sw-login.sh` — JWT login, token on stdout only
 - `sw-graphql.sh [<token>] <query> [vars-json]` — authed GraphQL POST
 - `sw-logs.sh [<token>] deployment <dep-id> [timeout]` — replay + tail

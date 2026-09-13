@@ -82,7 +82,24 @@ Then restart the harness (skills load at startup).
 scripts default to `127.0.0.1:3333` and auto-detect http/https.
 
 **Remote** (agent somewhere else): point it at the server and log in with
-any SwiftWave account the server admin creates for you:
+any SwiftWave account the server admin creates for you.
+
+The simplest way is a config file. Copy the template and fill it in:
+
+```bash
+cp swiftwave/env.example .env.swiftwave   # or ~/.config/swiftwave/env
+chmod 600 .env.swiftwave                  # it holds secrets — keep it private
+```
+
+```bash
+# .env.swiftwave
+SW_HOST=your-server.example.com
+SW_USER=myuser
+SW_PASS='...'
+```
+
+Or just export the variables in your shell — shell env always beats the
+file:
 
 ```bash
 export SW_HOST=your-server.example.com
@@ -92,6 +109,11 @@ export SW_PASS='...'
 
 Prefer `https` (SwiftWave's `use_tls`) or an SSH tunnel — over plain
 `http` your password travels unencrypted, and the skill will warn you.
+
+> **Why not YAML?** The skill sticks to `.env`-style files on purpose:
+> they need no extra packages (YAML parsing would require PyYAML), and
+> every language the scripts use already understands them. Only `SW_*`
+> keys are read, so pointing the skill at a bigger shared `.env` is safe.
 
 ### 3. Try it
 
@@ -109,7 +131,7 @@ export SW_TOKEN="$(./scripts/sw-login.sh)"     # login, token stays in env
 
 | Script | What it does |
 |---|---|
-| `sw-env.sh` | Shared config — source it first (host, port, scheme, remote detection) |
+| `sw-env.sh` | Shared config — source it first (host, port, scheme, remote detection). Loads `SW_*` from `.env.swiftwave` / `~/.config/swiftwave/env` / `$SW_ENV_FILE` |
 | `sw-login.sh` | Log in, print JWT to stdout only |
 | `sw-graphql.sh` | Run any GraphQL query/mutation |
 | `sw-logs.sh` | Stream deployment or container logs (websocket, remote-friendly) |

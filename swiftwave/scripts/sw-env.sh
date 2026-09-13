@@ -5,10 +5,64 @@
 # to operate remotely), SW_PORT (3333), SW_SCHEME (auto-detected unless
 # explicitly set), SW_INSECURE (1 adds curl -k for the self-signed daemon
 # cert when using https), SW_USER/SW_PASS (login creds), SW_TOKEN (JWT).
+# Config file: instead of exporting SW_* by hand, keep them in an env
+# file (see env.example) — lookup order (first found wins):
+#   1. $SW_ENV_FILE          (explicit path)
+#   2. ./.env.swiftwave      (project-local)
+#   3. ~/.config/swiftwave/env   (per-user)
+# Only SW_* keys are read; quotes are optional; the real environment
+# always wins over the file. chmod 600 the file — it holds secrets.
 # Remote mode (SW_HOST not loopback) is API-only: no local `swiftwave`
 # CLI, no /var/lib/swiftwave/config.yml. Credentials cross the network —
 # prefer https (use_tls) or an SSH tunnel; http+remote warns here.
 set -u
+
+# --- optional config file (loaded BEFORE defaults so files can set any
+# --- SW_* var; already-exported vars are never overwritten) -----------
+_sw_load_env_file() {
+  local f="$1" line key value perms
+  if [ -n "${SW_ENV_FILE:-}" ] && [ ! -f "$f" ]; then
+    echo "sw-env: SW_ENV_FILE is set but '$f' not found" >&2
+    return 0
+  fi
+  # beginner-friendly security nudge: secrets in a world/group-readable file
+  perms="$(stat -c '%a' "$f" 2>/dev/null || stat -f '%Lp' "$f" 2>/dev/null || echo 600)"
+  case "$perms" in
+    600|400|0400|0600) ;;
+    *) echo "sw-env: WARNING: '$f' is mode $perms — it may hold SW_PASS/SW_TOKEN, run: chmod 600 '$f'" >&2 ;;
+  esac
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in ''|'#'*) continue ;; esac
+    line="${line#export }"
+    key="${line%%=*}"
+    case "$key" in
+      SW_[A-Za-z_]*) ;;
+      *) continue ;;            # only SW_* keys; ignore anything else
+    esac
+    value="${line#*=}"
+    case "$value" in
+      \"*\") value="${value#\"}"; value="${value%\"}" ;;
+      \'*\') value="${value#\'}"; value="${value%\'}" ;;
+    esac
+    if [ -z "${!key+x}" ]; then
+      printf -v "$key" '%s' "$value"
+      export "$key"
+    fi
+  done < "$f"
+}
+
+if [ -n "${SW_ENV_FILE:-}" ]; then
+  _sw_load_env_file "$SW_ENV_FILE"
+else
+  for _f in "./.env.swiftwave" "${HOME:-}/.config/swiftwave/env"; do
+    if [ -n "$_f" ] && [ -f "$_f" ]; then
+      _sw_load_env_file "$_f"
+      break
+    fi
+  done
+fi
+unset -f _sw_load_env_file 2>/dev/null || true
 
 SW_HOST="${SW_HOST:-127.0.0.1}"
 SW_PORT="${SW_PORT:-3333}"
