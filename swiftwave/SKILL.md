@@ -20,8 +20,9 @@ dashboard/UI operations.
   account on the target server (`SW_USER`/`SW_PASS` → `sw-login.sh`);
   any account works (see RBAC warning below).
 - **Config file instead of exports**: keep credentials in an env file —
-  `./.env.swiftwave` (project) or `~/.config/swiftwave/env` (user), or
-  point `SW_ENV_FILE` at any path. Template: `env.example`. Only `SW_*`
+  `./.env.swiftwave` (project), `~/.config/swiftwave/env` (user), or the
+  skill dir's own `.env.swiftwave` (last-resort fallback), or point
+  `SW_ENV_FILE` at any path. Template: `env.example`. Only `SW_*`
   keys are read; the real environment always wins over the file.
   `chmod 600` it (scripts warn on loose perms). YAML is deliberately
   not supported (would add a PyYAML dependency).
@@ -101,9 +102,21 @@ REST-only exceptions (upload code, volume backup/restore): `references/rest-api.
 
 ### 5. Deploy via API
 
+- Which path? **Remote without operator-shared registry creds → use
+  the sourceCode path** (zero extra prereqs; in-cluster builder handles
+  plain Dockerfiles). The prebuilt-image path additionally requires a
+  local docker daemon with `insecure-registries` configured + restarted
+  and registry creds the API never exposes — only worth it when the
+  builder's failure logs prove insufficient.
 - Ingress requires the proxy: `enableProxyOnServer` on at least one
   online server first, otherwise port 80/443 never listens.
-- Recommended: **prebuilt image** via local registry. Build + push, store
+- One-shot source deploy (upload → dockerfile → create → wait):
+  `scripts/sw-create-app.sh <name> <dir> [-e KEY=VALUE]... [--no-wait]`.
+  Required `ApplicationInput` fields are documented in
+  `references/application-input.md` (several are required-but-unguessable:
+  `preferredServerHostnames`, full `dockerProxyConfig.permission`,
+  full `customHealthCheck`, `hostname` = `name`).
+- Prebuilt image via local registry: build + push, store
   creds with `createImageRegistryCredential`, then `createApplication`
   with `upstreamType: image`. This skips the in-cluster builder, whose
   failure logs are terse (`sw-logs.sh deployment` only shows
@@ -119,7 +132,9 @@ REST-only exceptions (upload code, volume backup/restore): `references/rest-api.
 - Source-code path: upload with `scripts/sw-upload-code.sh <dir>`
   (archives directory CONTENTS so the Dockerfile lands at tar root,
   forces `Content-Type: application/x-tar`), then `createApplication`
-  with `upstreamType: sourceCode`.
+  with `upstreamType: sourceCode` — or the one-shot
+  `scripts/sw-create-app.sh` above, which does both plus the
+  `dockerConfigGenerator` round trip and the wait.
 - Volume names allow alphabets/numbers/underscore only (no hyphens).
 - Wait with `scripts/sw-wait-deployment.sh <app-id> <timeout> <dep-id>`
   using the deployment id from the create/update/rebuild mutation response
@@ -142,14 +157,17 @@ All in `scripts/`, env-only config (`SW_HOST` default `127.0.0.1` — set
 to the server IP to go remote, `SW_PORT` default `3333`, `SW_SCHEME`
 auto-detected unless set, `SW_INSECURE=1` default for self-signed cert,
 `SW_USER`/`SW_PASS` for login, `SW_TOKEN` for auth). Requires `curl` +
-`python3` only (no jq, no pip packages). Source `sw-env.sh` for defaults:
+`python3` + `bash` (macOS/BSD compatible, no GNU-only flags, no jq, no
+pip packages). Source `sw-env.sh` for defaults (`sw-env.sh` itself is
+also sourceable from `zsh`):
 
 - `sw-env.sh` — shared env, dep check, scheme probe, remote detection
   (`SW_REMOTE=1`), cleartext warning, base URL derivation; also loads
   `SW_*` from an env file (`SW_ENV_FILE` > `./.env.swiftwave` >
-  `~/.config/swiftwave/env`; shell env wins)
+  `~/.config/swiftwave/env` > skill-dir `.env.swiftwave`; shell env wins)
 - `sw-login.sh` — JWT login, token on stdout only
 - `sw-graphql.sh [<token>] <query> [vars-json]` — authed GraphQL POST
+- `sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE]... [--no-wait] [timeout]` — one-shot source deploy (upload → dockerfile → create → wait)
 - `sw-logs.sh [<token>] deployment <dep-id> [timeout]` — replay + tail
   deployment logs via websocket subscription
 - `sw-logs.sh [<token>] runtime <app-id> [timeframe] [idle-timeout]` —
@@ -216,6 +234,9 @@ auto-detected unless set, `SW_INSECURE=1` default for self-signed cert,
 - `references/rest-api.md` — vendored v2 REST docs
 - `references/graphql.md` — endpoint, auth, schema source (introspection
   disabled), user/server/system/log queries + log subscriptions
+- `references/application-input.md` — working `createApplication` input
+  for sourceCode deploys (required-but-unguessable fields, 422 sample,
+  `dockerConfigGenerator` round trip)
 - `references/config-reference.md` — local paths/ports, redacted (co-located only)
 - `references/stack-spec.md` — supported compose subset
 - `references/multi-app.md` — app + managed-database pattern

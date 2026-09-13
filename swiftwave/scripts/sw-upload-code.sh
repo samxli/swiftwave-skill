@@ -21,16 +21,20 @@ SRC="${1:?usage: sw-upload-code.sh [<token>] <dir|file.tar> (or set SW_TOKEN)}"
 
 TAR_FILE="$SRC"
 TMP_TAR=""
+TMP_BASE=""
 if [ -d "$SRC" ]; then
   if [ ! -f "$SRC/Dockerfile" ]; then
     echo "sw-upload-code: warning: no Dockerfile at $SRC/Dockerfile" >&2
   fi
-  TMP_TAR="$(mktemp --suffix=.tar)"
+  # Portable: BSD mktemp lacks --suffix. mktemp creates $TMP_BASE; the
+  # .tar twin is what tar writes to.
+  TMP_BASE="$(mktemp)"
+  TMP_TAR="${TMP_BASE}.tar"
   tar -cf "$TMP_TAR" -C "$SRC" .
   TAR_FILE="$TMP_TAR"
 fi
 
-cleanup() { [ -n "$TMP_TAR" ] && rm -f "$TMP_TAR"; }
+cleanup() { [ -n "${TMP_TAR:-}" ] && rm -f "$TMP_TAR"; [ -n "${TMP_BASE:-}" ] && rm -f "$TMP_BASE"; }
 trap cleanup EXIT
 
 # The server rejects the upload unless Content-Type is application/x-tar.

@@ -10,11 +10,13 @@
 #   1. $SW_ENV_FILE          (explicit path)
 #   2. ./.env.swiftwave      (project-local)
 #   3. ~/.config/swiftwave/env   (per-user)
+#   4. <skill-dir>/.env.swiftwave (bundled with this skill, last resort)
 # Only SW_* keys are read; quotes are optional; the real environment
 # always wins over the file. chmod 600 the file — it holds secrets.
 # Remote mode (SW_HOST not loopback) is API-only: no local `swiftwave`
 # CLI, no /var/lib/swiftwave/config.yml. Credentials cross the network —
 # prefer https (use_tls) or an SSH tunnel; http+remote warns here.
+# Portable: sourceable from bash, zsh, and POSIX sh (no bashisms).
 set -u
 
 # --- optional config file (loaded BEFORE defaults so files can set any
@@ -40,27 +42,49 @@ _sw_load_env_file() {
       SW_[A-Za-z_]*) ;;
       *) continue ;;            # only SW_* keys; ignore anything else
     esac
+    case "$key" in
+      *[!A-Za-z0-9_]* ) continue ;;  # strict identifier (also keeps the eval below safe)
+    esac
     value="${line#*=}"
     case "$value" in
       \"*\") value="${value#\"}"; value="${value%\"}" ;;
       \'*\') value="${value#\'}"; value="${value%\'}" ;;
     esac
-    if [ -z "${!key+x}" ]; then
-      printf -v "$key" '%s' "$value"
-      export "$key"
+    # Portable "set only when unset" (bash ${!key+x} / printf -v are
+    # bash-only and break zsh sourcing — env file silently ignored).
+    eval "_sw_exists=\${$key+x}" 2>/dev/null || _sw_exists=""
+    if [ -z "${_sw_exists:-}" ]; then
+      export "$key=$value"
     fi
+    unset _sw_exists 2>/dev/null || true
   done < "$f"
 }
 
 if [ -n "${SW_ENV_FILE:-}" ]; then
   _sw_load_env_file "$SW_ENV_FILE"
 else
-  for _f in "./.env.swiftwave" "${HOME:-}/.config/swiftwave/env"; do
+  # Skill-dir fallback: locate this file portably (BASH_SOURCE is bash-only,
+  # ${(%):-%x} is zsh-only — each hidden in eval so the other shell never
+  # parses it). Project-local and user config still win; skill-dir is last.
+  _sw_script_path=""
+  eval '_sw_script_path="${BASH_SOURCE[0]:-}"' 2>/dev/null || true
+  if [ -z "$_sw_script_path" ]; then
+    eval '_sw_script_path="${(%):-%x}"' 2>/dev/null || true
+  fi
+  if [ -z "$_sw_script_path" ]; then
+    _sw_script_path="$0"
+  fi
+  _sw_script_dir=""
+  case "$_sw_script_path" in
+    */*) _sw_script_dir="$(cd "$(dirname "$_sw_script_path")" && pwd)" ;;
+  esac
+  for _f in "./.env.swiftwave" "${HOME:-}/.config/swiftwave/env" "${_sw_script_dir}/.env.swiftwave"; do
     if [ -n "$_f" ] && [ -f "$_f" ]; then
       _sw_load_env_file "$_f"
       break
     fi
   done
+  unset _sw_script_path _sw_script_dir 2>/dev/null || true
 fi
 unset -f _sw_load_env_file 2>/dev/null || true
 
