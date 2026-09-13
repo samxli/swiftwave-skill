@@ -33,6 +33,12 @@ schema as source of truth instead:
   `persistent_volume*.graphqls`, `deployment.graphqls`,
   `docker_config_generator.graphqls`, `image_registry_credential.graphqls`.
 
+Field-name traps that 422 on sight (`upstreamType` is input-only,
+`persistentVolumeID`/`mountingPath` spelling, credential has no `name`,
+volume creation needs dummy nfs/cifs configs) are tabulated in
+`references/schema-cheatsheet.md` — check it before hand-writing a
+query. Pinned raw URLs for all 32 schema files live there too.
+
 Only re-check live introspection after an upgrade in case it gets enabled;
 do not rely on it.
 
@@ -46,6 +52,10 @@ do not rely on it.
 - Deploy status: poll `application { latestDeployment { status } }`
   via `scripts/sw-wait-deployment.sh` (`pending/deployPending/deploying`
   → `deployed`, terminal failures: `failed/stalled/stopped/cancelled`).
+- Async mutations: `issueSSL` returns `sslStatus: pending` (poll `domain
+  { sslStatus }` to `issued`; `none|pending|issued|failed`); `create`/
+  `deleteIngressRule` move through `status: pending|deleting` (poll the
+  rule or the parent `ingressRules` list until `applied`/gone).
 
 ## Users, servers, system (remote-management surface)
 

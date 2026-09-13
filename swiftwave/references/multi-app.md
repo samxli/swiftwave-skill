@@ -12,6 +12,9 @@ image app and connect over swarm DNS at `<app-name>:<port>`. Proven with
   `POSTGRES_DB`.
 - One persistent volume bound to the data dir (`/var/lib/postgresql/data`
   for postgres). The volume outlives the app; deleting it wipes the data.
+  Creation input trap: even `type: local` needs fully-populated
+  `nfsConfig` + `cifsConfig` — verbatim mutation in
+  `references/schema-cheatsheet.md` ("Creating a `local` volume").
 - No ingress rule needed for internal-only access. No `dockerfile`
   (pass `""`), no build.
 - Verify readiness: co-located via container

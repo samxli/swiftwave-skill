@@ -97,7 +97,8 @@ Remote: same, plus `SW_HOST`. Self-signed https needs nothing extra
 ```
 
 Schema source is the versioned `*.graphqls` files (live introspection
-is disabled on stock v2). Details: `references/graphql.md`.
+is disabled on stock v2). Details: `references/graphql.md`; field-name
+traps + copy-paste queries: `references/schema-cheatsheet.md`.
 REST-only exceptions (upload code, volume backup/restore): `references/rest-api.md`.
 
 ### 5. Deploy via API
@@ -111,8 +112,10 @@ REST-only exceptions (upload code, volume backup/restore): `references/rest-api.
 - Ingress requires the proxy: `enableProxyOnServer` on at least one
   online server first, otherwise port 80/443 never listens.
 - One-shot source deploy (upload → dockerfile → create → wait):
-  `scripts/sw-create-app.sh <name> <dir> [-e KEY=VALUE]... [--no-wait]`.
-  Required `ApplicationInput` fields are documented in
+  `scripts/sw-create-app.sh <name> <dir> [-e KEY=VALUE|@file]...
+  [--no-wait]`. Secrets go via `-e @envfile` (KEY=VALUE lines), never
+  bare `-e SECRET=...` (visible in `ps`). Required `ApplicationInput`
+  fields are documented in
   `references/application-input.md` (several are required-but-unguessable:
   `preferredServerHostnames`, full `dockerProxyConfig.permission`,
   full `customHealthCheck`, `hostname` = `name`).
@@ -144,7 +147,10 @@ REST-only exceptions (upload code, volume backup/restore): `references/rest-api.
 - Domains: `addDomain` → `createIngressRule` (http 80 / https 443 →
   container `targetPort`) → `issueSSL` (needs public DNS pointing here)
   → optional `enableHttpsRedirectIngressRule` (requires deleting the
-  plain port-80 rule on the same domain first).
+  plain port-80 rule on the same domain first). All three mutations are
+  async: rules sit at `status: pending` before `applied` (poll the rule
+  or parent list), `issueSSL` leaves `sslStatus: pending` for ~10s before
+  `issued` — never treat the mutation response as the final state.
 - Stack: docker-stack subset only — see `references/stack-spec.md`.
   Expose via ingress rules, not `ports`.
 - Multi-app (e.g. app + database): deploy the database as an image app
@@ -167,7 +173,8 @@ also sourceable from `zsh`):
   `~/.config/swiftwave/env` > skill-dir `.env.swiftwave`; shell env wins)
 - `sw-login.sh` — JWT login, token on stdout only
 - `sw-graphql.sh [<token>] <query> [vars-json]` — authed GraphQL POST
-- `sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE]... [--no-wait] [timeout]` — one-shot source deploy (upload → dockerfile → create → wait)
+- `sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE|@file]... [--no-wait] [timeout]` — one-shot source deploy (upload → dockerfile → create → wait)
+- `sw-destroy-app.sh [<token>] <app-id|name> [--yes]` — delete app + rules first, orphaned domains only; never volumes (confirm required)
 - `sw-logs.sh [<token>] deployment <dep-id> [timeout]` — replay + tail
   deployment logs via websocket subscription
 - `sw-logs.sh [<token>] runtime <app-id> [timeframe] [idle-timeout]` —
@@ -237,6 +244,9 @@ also sourceable from `zsh`):
 - `references/application-input.md` — working `createApplication` input
   for sourceCode deploys (required-but-unguessable fields, 422 sample,
   `dockerConfigGenerator` round trip)
+- `references/schema-cheatsheet.md` — queryable fields per type (trap
+  names), local-volume creation mutation, copy-paste queries, pinned
+  schema URLs
 - `references/config-reference.md` — local paths/ports, redacted (co-located only)
 - `references/stack-spec.md` — supported compose subset
 - `references/multi-app.md` — app + managed-database pattern

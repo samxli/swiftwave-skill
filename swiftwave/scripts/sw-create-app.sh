@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # One-shot source-code deploy: upload tar -> dockerConfigGenerator ->
 # createApplication -> wait for deployment.
-# Usage: ./sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE]... [--no-wait] [timeout-secs]
+# Usage: ./sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE|@file]... [--no-wait] [timeout-secs]
 # Token may be passed as first arg or via SW_TOKEN env (preferred).
 # -e flags become environmentVariables (repeatable, KEY=VALUE, split on first =).
+# -e @<file> reads KEY=VALUE lines from a file instead — use it for secrets
+# so passwords never appear in the process list (only the file path does).
 # Default: waits up to 600s via sw-wait-deployment.sh; --no-wait skips and
 # prints the wait command instead.
 # ponytail: defaults fixed (replicated/1/512/128); add flags when a deploy actually needs otherwise.
@@ -15,19 +17,49 @@ source "${SCRIPT_DIR}/sw-env.sh"
 if [[ "${1:-}" == eyJ* ]]; then
   SW_TOKEN="$1"; shift
 fi
-export SW_TOKEN="${SW_TOKEN:?usage: sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE]... [--no-wait] [timeout-secs] (or set SW_TOKEN)}"
-NAME="${1:?usage: sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE]... [--no-wait] [timeout-secs]}"; shift
-SRC="${1:?usage: sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE]... [--no-wait] [timeout-secs]}"; shift
+export SW_TOKEN="${SW_TOKEN:?usage: sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE|@file]... [--no-wait] [timeout-secs] (or set SW_TOKEN)}"
+NAME="${1:?usage: sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE|@file]... [--no-wait] [timeout-secs]}"; shift
+SRC="${1:?usage: sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE|@file]... [--no-wait] [timeout-secs]}"; shift
 
 NO_WAIT=0
 TIMEOUT=600
 ENV_LIST=""
+# Append KEY=VALUE lines from a file (blank lines, #-comments, and lines
+# without = skipped; surrounding quotes stripped) — same style as sw-env.sh.
+load_env_file() {
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in ''|'#'*) continue ;; esac
+    line="${line#export }"
+    case "$line" in *=*) ;; *) continue ;; esac
+    _val="${line#*=}"
+    case "$_val" in
+      \"*\") _val="${_val#\"}"; _val="${_val%\"}" ;;
+      \'*\') _val="${_val#\'}"; _val="${_val%\'}" ;;
+    esac
+    ENV_LIST="${ENV_LIST}${line%%=*}=$_val"$'\n'
+  done < "$1"
+  unset _val 2>/dev/null || true
+}
+load_env_arg() {
+  case "$1" in
+    @*)
+      _ef="${1#@}"
+      if [ ! -f "$_ef" ]; then
+        echo "sw-create-app: env file '$_ef' not found" >&2; exit 2
+      fi
+      load_env_file "$_ef"
+      unset _ef 2>/dev/null || true ;;
+    *)
+      ENV_LIST="${ENV_LIST}$1"$'\n' ;;
+  esac
+}
 while [ $# -gt 0 ]; do
   case "$1" in
     -e)
-      ENV_LIST="${ENV_LIST}${2:?usage: -e KEY=VALUE}"$'\n'; shift 2 ;;
+      load_env_arg "${2:?usage: -e KEY=VALUE|@file}"; shift 2 ;;
     -e?*)
-      ENV_LIST="${ENV_LIST}${1#-e}"$'\n'; shift ;;
+      load_env_arg "${1#-e}"; shift ;;
     --no-wait) NO_WAIT=1; shift ;;
     --) shift; break ;;
     -*)
