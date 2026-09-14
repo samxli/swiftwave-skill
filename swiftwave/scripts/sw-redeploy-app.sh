@@ -6,11 +6,11 @@
 # Usage: ./sw-redeploy-app.sh [<token>] <app-id|name> [<dir|tar>] [timeout-secs]
 # Token may be passed as first arg or via SW_TOKEN env (preferred).
 #
-# <dir|tar> is required for sourceCode apps (the new code); omit it for git
-# apps (the builder re-clones the branch — same as rebuildApplication).
+# <dir|tar> is required for sourceCode apps (the new code). Git apps are
+# refused — use rebuildApplication (the builder re-clones the branch; their
+# updateApplication input fields are not reliably round-trippable).
+# Image apps are refused too — rebuildApplication re-pulls the same tag.
 # Waits up to <timeout-secs> (default 600) unless SW_NO_WAIT=1.
-# For image apps use `mutation { rebuildApplication(id: "<id>") }` instead
-# (same digest re-pulled; no upload needed).
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -36,7 +36,7 @@ done
 # resubmitted as-is; only the code fields change later). All queried fields
 # are ApplicationInput-compatible, except configMounts (content stays
 # server-side; only the mounting metadata round-trips).
-APP_JSON="$("${SCRIPT_DIR}/sw-graphql.sh" '{ applications(includeGroupedApplications: true) { id name hostname command upstreamType latestDeployment { id } environmentVariables { key value } persistentVolumeBindings { persistentVolumeID mountingPath } configMounts { mountingPath uid gid } capabilities sysctls resourceLimit { memoryMb } reservedResource { memoryMb } deploymentMode replicas preferredServerHostnames dockerProxyConfig { enabled permission { ping version info events auth secrets build commit configs containers distribution exec grpc images networks nodes plugins services session swarm system tasks volumes } } customHealthCheck { enabled test_command interval_seconds timeout_seconds start_period_seconds start_interval_seconds retries } } }' \
+APP_JSON="$("${SCRIPT_DIR}/sw-graphql.sh" '{ applications(includeGroupedApplications: true) { id name hostname command latestDeployment { id upstreamType } environmentVariables { key value } persistentVolumeBindings { persistentVolumeID mountingPath } configMounts { mountingPath uid gid } capabilities sysctls resourceLimit { memoryMb } reservedResource { memoryMb } deploymentMode replicas preferredServerHostnames dockerProxyConfig { enabled permission { ping version info events auth secrets build commit configs containers distribution exec grpc images networks nodes plugins services session swarm system tasks volumes } } customHealthCheck { enabled test_command interval_seconds timeout_seconds start_period_seconds start_interval_seconds retries } } }' \
   | IDENT="$IDENT" python3 -c 'import json,os,sys
 ident = os.environ["IDENT"]
 apps = json.load(sys.stdin)["data"]["applications"] or []
@@ -49,7 +49,7 @@ print(json.dumps(hit[0]))')"
 
 APP_ID="$(printf '%s' "$APP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 APP_NAME="$(printf '%s' "$APP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')"
-UPSTREAM="$(printf '%s' "$APP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["upstreamType"])')"
+UPSTREAM="$(printf '%s' "$APP_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin)["latestDeployment"]; print(d["upstreamType"] if d else "unknown")')"
 OLD_DEP="$(printf '%s' "$APP_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin)["latestDeployment"]; print(d["id"] if d else "")')"
 
 case "$UPSTREAM" in
@@ -62,16 +62,15 @@ case "$UPSTREAM" in
       exit 2
     fi ;;
   git)
-    [ -n "$SRC" ] && echo "sw-redeploy-app: ignoring '$SRC' — git apps re-clone the branch server-side" >&2
-    SRC="" ;;
+    echo "sw-redeploy-app: '$APP_NAME' deploys from git — use: mutation { rebuildApplication(id: \"$APP_ID\") } (the builder re-clones the branch; updateApplication would need repositoryUrl/Branch/gitCredentialID, which are not reliably round-trippable)" >&2
+    exit 2 ;;
   *)
     echo "sw-redeploy-app: unknown upstreamType '$UPSTREAM'" >&2; exit 2 ;;
 esac
 
 echo "redeploying $APP_NAME ($APP_ID, upstreamType=$UPSTREAM; ingress/domains untouched)"
 
-# 2. New dockerfile for sourceCode (the source may ship a changed one);
-# git apps keep the server's existing effective dockerfile.
+# 2. New dockerfile for sourceCode (the source may ship a changed one).
 DOCKERFILE=""
 TAR_FILE=""
 if [ "$UPSTREAM" = "sourceCode" ]; then

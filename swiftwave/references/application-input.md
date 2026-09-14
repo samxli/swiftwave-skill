@@ -83,6 +83,17 @@ so never feed create-time defaults (they would reset replicas/resources/
 volumes). All config fields round-trip from the `Application` type, but
 `dockerfile` and `sourceCodeCompressedFileName` exist on the input only:
 re-upload + `dockerConfigGenerator` again (steps above).
-`scripts/sw-redeploy-app.sh` does all of this; `rebuildApplication(id)`
-reuses the stored code (git re-clone only) — use it when the code did not
-change.
+`scripts/sw-redeploy-app.sh` does all of this (verified live: ~7s from
+mutation to `deployed`, rolling update with graceful shutdown).
+
+Gotchas, both hit live on 2.23.x:
+
+- `upstreamType` is NOT queryable on `Application` — it lives on
+  `Deployment` (`latestDeployment { upstreamType }`) or on
+  `ApplicationInput`. A config query with a top-level `upstreamType`
+  422s the whole redeploy.
+- git apps: the round-trip needs `repositoryUrl` / `repositoryBranch` /
+  `gitCredentialID` / `codePath`, which are not reliably reconstructible
+  from the type — use `rebuildApplication(id)` instead (the builder
+  re-clones the branch). Image apps: `rebuildApplication(id)` re-pulls
+  the same tag.
