@@ -34,7 +34,15 @@ if [ -d "$SRC" ]; then
   TAR_FILE="$TMP_TAR"
 fi
 
-cleanup() { [ -n "${TMP_TAR:-}" ] && rm -f "$TMP_TAR"; [ -n "${TMP_BASE:-}" ] && rm -f "$TMP_BASE"; }
+# Cleanup must not leak a failure status: with a .tar input neither TMP_*
+# is set, and a bare `[ -n "" ] && ...` as the trap's last command would
+# make the EXIT trap exit 1 — killing the caller's upload right after it
+# succeeded (callers use `set -e`).
+cleanup() {
+  [ -n "${TMP_TAR:-}" ] && rm -f "$TMP_TAR"
+  [ -n "${TMP_BASE:-}" ] && rm -f "$TMP_BASE"
+  return 0
+}
 trap cleanup EXIT
 
 # The server rejects the upload unless Content-Type is application/x-tar.

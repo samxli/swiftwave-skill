@@ -80,6 +80,8 @@ export SW_TOKEN="$(./scripts/sw-login.sh)"   # 1. auth (skip if SW_TOKEN is set)
   the same domain (`enableHttpsRedirectIngressRule(id:)`).
 - Secrets go via `-e @file` (KEY=VALUE lines) — never bare `-e SECRET=...`
   (visible in `ps`).
+- Iterating on the code? Redeploy the SAME app (config, ingress, and
+  domains untouched): `./scripts/sw-redeploy-app.sh hello ./hello`.
 - Teardown after a test deploy: `./scripts/sw-destroy-app.sh <app-id|name>`
   (interactive confirm) — volumes/domains survive on purpose; see § Scripts.
 
@@ -206,6 +208,7 @@ also sourceable from `zsh`):
 - `sw-login.sh` — JWT login, token on stdout only
 - `sw-graphql.sh [<token>] <query> [vars-json]` — authed GraphQL POST
 - `sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE|@file]... [--no-wait] [timeout]` — one-shot source deploy (upload → dockerfile → create → wait)
+- `sw-redeploy-app.sh [<token>] <app-id|name> [<dir|tar>] [timeout]` — new code for an existing app (`updateApplication` with the live config reused, so env/volumes/replicas/proxy/health are preserved); git apps re-clone the branch (omit dir), image apps → `rebuildApplication`
 - `sw-destroy-app.sh [<token>] <app-id|name> [--yes]` — delete app + rules first, orphaned domains only; never volumes (confirm required)
 - `sw-logs.sh [<token>] deployment <dep-id> [timeout]` — replay + tail
   deployment logs via websocket subscription
@@ -239,6 +242,13 @@ also sourceable from `zsh`):
   history.
 - `rebuildApplication(id)` redeploys the current config as a new deployment
   (no config change needed); `updateApplication` is for config changes.
+- New code for an existing app is `updateApplication` with the full input
+  re-fetched from the app — input-only fields (`dockerfile`,
+  `sourceCodeCompressedFileName`) are NOT queryable on the type, so they
+  must be re-derived (upload again + `dockerConfigGenerator`). Use
+  `sw-redeploy-app.sh`; `rebuildApplication` is only the same-code/git-pull
+  case. Never feed create-time defaults into `updateApplication` — it
+  replaces the whole config.
 - Users are NOT role-separated: `deleteUser` succeeds against any id —
   including the first admin — from any account. Deleting all users
   locks everyone out until server-root `swiftwave user create`.

@@ -73,3 +73,16 @@ Missing any of these returns HTTP 422, e.g.
 
 Defaults observed on this server: `replicated` / 1 replica /
 512 MB limit / 128 MB reserved.
+
+## Redeploy: updateApplication round trip
+
+For new code on an EXISTING app, `updateApplication(id, input)` takes the
+same `ApplicationInput` — re-fetch the live config and resubmit it, swapping
+only the code fields. Unlike create, this input REPLACES the whole config,
+so never feed create-time defaults (they would reset replicas/resources/
+volumes). All config fields round-trip from the `Application` type, but
+`dockerfile` and `sourceCodeCompressedFileName` exist on the input only:
+re-upload + `dockerConfigGenerator` again (steps above).
+`scripts/sw-redeploy-app.sh` does all of this; `rebuildApplication(id)`
+reuses the stored code (git re-clone only) — use it when the code did not
+change.

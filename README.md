@@ -123,6 +123,7 @@ Ask your agent, or run the scripts yourself:
 ./scripts/sw-doctor.sh                         # health check (read-only, no login)
 export SW_TOKEN="$(./scripts/sw-login.sh)"     # login, token stays in env
 ./scripts/sw-create-app.sh hello ./hello       # deploy a folder + wait for it
+./scripts/sw-redeploy-app.sh hello ./hello     # later: ship new code to the same app
 ./scripts/sw-logs.sh runtime <app-id>          # container logs
 ./scripts/sw-graphql.sh '{ applications { id name } }'
 ./scripts/sw-logs.sh deployment <deployment-id> # build/deploy logs
@@ -136,6 +137,7 @@ export SW_TOKEN="$(./scripts/sw-login.sh)"     # login, token stays in env
 | `sw-login.sh` | Log in, print JWT to stdout only |
 | `sw-graphql.sh` | Run any GraphQL query/mutation |
 | `sw-create-app.sh` | One-shot source deploy: upload → create → wait for the deployment |
+| `sw-redeploy-app.sh` | New code for an existing app: reupload + update (env/volumes/domains untouched) |
 | `sw-destroy-app.sh` | Delete an app + its ingress rules (domains/volumes survive on purpose) |
 | `sw-upload-code.sh` | Tar + upload a source folder with a Dockerfile |
 | `sw-wait-deployment.sh` | Poll a deployment until it succeeds or fails |
