@@ -34,7 +34,8 @@ the source of truth:
   `persistent_volume*.graphqls`, `deployment.graphqls`,
   `docker_config_generator.graphqls`, `image_registry_credential.graphqls`.
 
-Field-name traps that 422 on sight (`upstreamType` is input-only,
+Field-name traps that 422 on sight (`upstreamType` is absent from
+`Application` — `ApplicationInput` and `Deployment` only,
 `persistentVolumeID`/`mountingPath` spelling, credential has no `name`,
 volume creation needs dummy nfs/cifs configs) are tabulated in
 `references/schema-cheatsheet.md` — check it before hand-writing a

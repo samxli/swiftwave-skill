@@ -3,20 +3,20 @@
 # updateApplication with the app's EXISTING config (env vars, volumes,
 # replicas, caps, proxy config, health check) and only the code fields
 # swapped. Ingress and domains are untouched.
-# Usage: ./sw-redeploy-app.sh [<token>] <app-id|name> [<dir|tar>] [timeout-secs]
+# Usage: ./sw-redeploy-app.sh [<token>] <app-id|name> <dir|tar> [--no-wait] [timeout-secs]
 # Token may be passed as first arg or via SW_TOKEN env (preferred).
 #
 # <dir|tar> is required for sourceCode apps (the new code). Git apps are
 # refused — use rebuildApplication (the builder re-clones the branch; their
 # updateApplication input fields are not reliably round-trippable).
 # Image apps are refused too — rebuildApplication re-pulls the same tag.
-# Waits up to <timeout-secs> (default 600) unless SW_NO_WAIT=1.
+# Waits up to <timeout-secs> (default 600) unless --no-wait / SW_NO_WAIT=1.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/sw-env.sh"
 
-USAGE='usage: sw-redeploy-app.sh [<token>] <app-id|name> [<dir|tar>] [timeout-secs] (or set SW_TOKEN)'
+USAGE='usage: sw-redeploy-app.sh [<token>] <app-id|name> <dir|tar> [--no-wait] [timeout-secs] (or set SW_TOKEN)'
 if [[ "${1:-}" == eyJ* ]]; then
   SW_TOKEN="$1"; shift
 fi
@@ -25,21 +25,34 @@ IDENT="${1:?$USAGE}"; shift
 
 SRC=""
 TIMEOUT=600
+NO_WAIT="${SW_NO_WAIT:-0}"
 while [ $# -gt 0 ]; do
   case "$1" in
-    ''|*[!0-9]*) SRC="$1"; shift ;;
+    --no-wait) NO_WAIT=1; shift ;;
+    --) shift; break ;;
+    -*)
+      echo "sw-redeploy-app: unknown flag '$1'" >&2; exit 2 ;;
+    ''|*[!0-9]*)
+      if [ -n "$SRC" ]; then
+        echo "sw-redeploy-app: unexpected second source '$1'" >&2; exit 2
+      fi
+      SRC="$1"; shift ;;
     *) TIMEOUT="$1"; shift ;;
   esac
 done
 
 # 1. Resolve id-or-name and capture the live config (everything below is
-# resubmitted as-is; only the code fields change later). All queried fields
-# are ApplicationInput-compatible, except configMounts (content stays
-# server-side; only the mounting metadata round-trips).
-APP_JSON="$("${SCRIPT_DIR}/sw-graphql.sh" '{ applications(includeGroupedApplications: true) { id name hostname command latestDeployment { id upstreamType } environmentVariables { key value } persistentVolumeBindings { persistentVolumeID mountingPath } configMounts { mountingPath uid gid } capabilities sysctls resourceLimit { memoryMb } reservedResource { memoryMb } deploymentMode replicas preferredServerHostnames dockerProxyConfig { enabled permission { ping version info events auth secrets build commit configs containers distribution exec grpc images networks nodes plugins services session swarm system tasks volumes } } customHealthCheck { enabled test_command interval_seconds timeout_seconds start_period_seconds start_interval_seconds retries } } }' \
+# resubmitted as-is; only the code fields change later). configMounts
+# content is included because ConfigMountInput.content is String! — it is
+# secret-bearing, so never echo APP_JSON. buildArgs live on Deployment
+# (not Application), hence via latestDeployment.
+APP_JSON="$("${SCRIPT_DIR}/sw-graphql.sh" '{ applications(includeGroupedApplications: true) { id name hostname command latestDeployment { id upstreamType buildArgs { key value } } environmentVariables { key value } persistentVolumeBindings { persistentVolumeID mountingPath } configMounts { content mountingPath uid gid } capabilities sysctls resourceLimit { memoryMb } reservedResource { memoryMb } deploymentMode replicas preferredServerHostnames dockerProxyConfig { enabled permission { ping version info events auth secrets build commit configs containers distribution exec grpc images networks nodes plugins services session swarm system tasks volumes } } customHealthCheck { enabled test_command interval_seconds timeout_seconds start_period_seconds start_interval_seconds retries } } }' \
   | IDENT="$IDENT" python3 -c 'import json,os,sys
 ident = os.environ["IDENT"]
-apps = json.load(sys.stdin)["data"]["applications"] or []
+d = json.load(sys.stdin)
+if d.get("errors"):
+    sys.exit("GraphQL error: %s" % d["errors"])
+apps = (d.get("data") or {}).get("applications") or []
 hit = [a for a in apps if a["id"] == ident or a["name"] == ident]
 if not hit:
     sys.exit("no app matches %r" % ident)
@@ -49,7 +62,7 @@ print(json.dumps(hit[0]))')"
 
 APP_ID="$(printf '%s' "$APP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 APP_NAME="$(printf '%s' "$APP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')"
-UPSTREAM="$(printf '%s' "$APP_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin)["latestDeployment"]; print(d["upstreamType"] if d else "unknown")')"
+UPSTREAM="$(printf '%s' "$APP_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin)["latestDeployment"]; print(d["upstreamType"] if d else "none")')"
 OLD_DEP="$(printf '%s' "$APP_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin)["latestDeployment"]; print(d["id"] if d else "")')"
 
 case "$UPSTREAM" in
@@ -63,6 +76,9 @@ case "$UPSTREAM" in
     fi ;;
   git)
     echo "sw-redeploy-app: '$APP_NAME' deploys from git — use: mutation { rebuildApplication(id: \"$APP_ID\") } (the builder re-clones the branch; updateApplication would need repositoryUrl/Branch/gitCredentialID, which are not reliably round-trippable)" >&2
+    exit 2 ;;
+  none)
+    echo "sw-redeploy-app: '$APP_NAME' has no deployments yet — create it with sw-create-app.sh first" >&2
     exit 2 ;;
   *)
     echo "sw-redeploy-app: unknown upstreamType '$UPSTREAM'" >&2; exit 2 ;;
@@ -78,7 +94,11 @@ if [ "$UPSTREAM" = "sourceCode" ]; then
   TAR_FILE="$(printf '%s' "$UPLOAD_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["file"])')"
   GEN_VARS="$(python3 -c 'import json,sys; print(json.dumps({"in": {"sourceType": "sourceCode", "sourceCodeCompressedFileName": sys.argv[1]}}))' "$TAR_FILE")"
   GEN_RESP="$("${SCRIPT_DIR}/sw-graphql.sh" 'query ($in: DockerConfigGeneratorInput!) { dockerConfigGenerator(input: $in) { dockerFile } }' "$GEN_VARS")"
-  DOCKERFILE="$(printf '%s' "$GEN_RESP" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["dockerConfigGenerator"]["dockerFile"])')"
+  DOCKERFILE="$(printf '%s' "$GEN_RESP" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+if d.get("errors"):
+    sys.exit("GraphQL error: %s" % d["errors"])
+print(d["data"]["dockerConfigGenerator"]["dockerFile"])')"
 fi
 
 # 3. updateApplication with the config round trip: reuse what the app has,
@@ -107,7 +127,7 @@ inp = {
     "preferredServerHostnames": app["preferredServerHostnames"],
     "dockerProxyConfig": app["dockerProxyConfig"],
     "customHealthCheck": app["customHealthCheck"],
-    "buildArgs": [],
+    "buildArgs": (app.get("latestDeployment") or {}).get("buildArgs") or [],
 }
 if upstream == "sourceCode":
     inp["sourceCodeCompressedFileName"] = tar_file
@@ -123,14 +143,30 @@ RESP="$(curl -sS --fail-with-body $(_sw_curl_flags) --max-time 60 -X POST "${SW_
   -H "Authorization: Bearer ${SW_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD")"
-DEP_ID="$(printf '%s' "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]["updateApplication"]["latestDeployment"]; print(d["id"] if d else "")')"
-echo "app $APP_ID deployment ${DEP_ID:-<unchanged>}"
+DEP_ID="$(printf '%s' "$RESP" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+if d.get("errors"):
+    sys.exit("GraphQL error: %s" % d["errors"])
+dep = d["data"]["updateApplication"]["latestDeployment"]
+print(dep["id"] if dep else "")')"
+if [ -z "$DEP_ID" ]; then
+  echo "sw-redeploy-app: updateApplication returned no deployment — response:" >&2
+  printf '%s\n' "$RESP" >&2
+  exit 1
+fi
+echo "app $APP_ID deployment $DEP_ID"
 
 # 4. Wait — same trap as create: latestDeployment may still point at the
 # previous deployment. If so, poll until the pointer moves, then wait on
 # the new id (sw-wait-deployment refuses to guess terminal states itself).
-if [ "${SW_NO_WAIT:-0}" = "1" ]; then
-  echo "${SCRIPT_DIR}/sw-wait-deployment.sh \"$APP_ID\" \"$TIMEOUT\" \"$DEP_ID\""
+if [ "$NO_WAIT" = "1" ]; then
+  if [ "$DEP_ID" = "$OLD_DEP" ]; then
+    # Pinning the wait to the old id would report instant false success.
+    echo "sw-redeploy-app: warning: latestDeployment still points at the previous deployment — wait WITHOUT an expected id:" >&2
+    echo "${SCRIPT_DIR}/sw-wait-deployment.sh \"$APP_ID\" \"$TIMEOUT\""
+  else
+    echo "${SCRIPT_DIR}/sw-wait-deployment.sh \"$APP_ID\" \"$TIMEOUT\" \"$DEP_ID\""
+  fi
   exit 0
 fi
 if [ -n "$OLD_DEP" ] && [ "$DEP_ID" = "$OLD_DEP" ]; then

@@ -99,13 +99,16 @@ for s in svrs:
   if [ -z "$SRV" ]; then
     echo "SKIP: server status query failed (expired SW_TOKEN or GraphQL error) — re-login and retry"
   else
-    echo "$SRV" | while read -r _h st _s _p; do
-      # 'unknown' (server registered but never reported) is not a failure.
+    # Herestring (not `echo | while`): the loop must run in THIS shell or
+    # fail()'s FAIL=1 is lost to a pipeline subshell and doctor exits 0.
+    while read -r _h st _s _p; do
+      # 'unknown' (field absent) and 'preparing' (setup in progress) are
+      # not failures; 'needs_setup' is — that server takes no deployments.
       case "$st" in
-        online|unknown|needs_setup|preparing) pass "server $_h: $st" ;;
+        online|unknown|preparing) pass "server $_h: $st" ;;
         *) fail "server $_h: $st" ;;
       esac
-    done
+    done <<<"$SRV"
   fi
 else
   echo "SKIP: server status check needs SW_TOKEN (set it for a full check)"

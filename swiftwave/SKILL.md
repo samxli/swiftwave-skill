@@ -72,9 +72,12 @@ export SW_TOKEN="$(./scripts/sw-login.sh)"   # 1. auth (skip if SW_TOKEN is set)
 ./scripts/sw-logs.sh runtime <app-id> last_1_hour           # 3. verify it runs
 # 4. domain + TLS (all mutations async — poll to applied/issued, never trust the response)
 ./scripts/sw-graphql.sh 'mutation { addDomain(input: {name: "hello.example.com"}) { id name } }'
-./scripts/sw-graphql.sh 'mutation { createIngressRule(input: {domainId: <id>, targetType: application, applicationId: "<app-id>", protocol: http, port: 80, targetPort: <container-port>}) { id status } }'
+./scripts/sw-graphql.sh 'mutation { createIngressRule(input: {domainId: <id>, targetType: application, applicationId: "<app-id>", externalService: "", protocol: http, port: 80, targetPort: <container-port>}) { id status } }'
 ./scripts/sw-graphql.sh 'mutation { issueSSL(id: <domain-id>) { sslStatus } }'
 ```
+
+- `IngressRuleInput` requires BOTH `applicationId` and `externalService`
+  (`String!`) whatever the target — pass `""` for the unused one.
 
 - The old port-80 rule must be deleted before enabling HTTPS redirect on
   the same domain (`enableHttpsRedirectIngressRule(id:)`).
@@ -208,7 +211,7 @@ also sourceable from `zsh`):
 - `sw-login.sh` — JWT login, token on stdout only
 - `sw-graphql.sh [<token>] <query> [vars-json]` — authed GraphQL POST
 - `sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE|@file]... [--no-wait] [timeout]` — one-shot source deploy (upload → dockerfile → create → wait)
-- `sw-redeploy-app.sh [<token>] <app-id|name> <dir|tar> [timeout]` — new code for an existing sourceCode app (`updateApplication` with the live config reused, so env/volumes/replicas/proxy/health are preserved); git and image apps are refused — use `rebuildApplication` there
+- `sw-redeploy-app.sh [<token>] <app-id|name> <dir|tar> [--no-wait] [timeout]` — new code for an existing sourceCode app (`updateApplication` with the live config reused, so env/volumes/replicas/proxy/health/buildArgs are preserved); git and image apps are refused — use `rebuildApplication` there
 - `sw-destroy-app.sh [<token>] <app-id|name> [--yes]` — delete app + rules first, orphaned domains only; never volumes (confirm required)
 - `sw-logs.sh [<token>] deployment <dep-id> [timeout]` — replay + tail
   deployment logs via websocket subscription

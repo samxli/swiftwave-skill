@@ -120,13 +120,13 @@ Prefer `https` (SwiftWave's `use_tls`) or an SSH tunnel — over plain
 Ask your agent, or run the scripts yourself:
 
 ```bash
-./scripts/sw-doctor.sh                         # health check (read-only, no login)
-export SW_TOKEN="$(./scripts/sw-login.sh)"     # login, token stays in env
-./scripts/sw-create-app.sh hello ./hello       # deploy a folder + wait for it
-./scripts/sw-redeploy-app.sh hello ./hello     # later: ship new code to the same app
-./scripts/sw-logs.sh runtime <app-id>          # container logs
-./scripts/sw-graphql.sh '{ applications { id name } }'
-./scripts/sw-logs.sh deployment <deployment-id> # build/deploy logs
+swiftwave/scripts/sw-doctor.sh                         # health check (read-only, no login)
+export SW_TOKEN="$(swiftwave/scripts/sw-login.sh)"     # login, token stays in env
+swiftwave/scripts/sw-create-app.sh hello ./hello       # deploy a folder + wait for it
+swiftwave/scripts/sw-redeploy-app.sh hello ./hello     # later: ship new code to the same app
+swiftwave/scripts/sw-logs.sh runtime <app-id>          # container logs
+swiftwave/scripts/sw-graphql.sh '{ applications { id name } }'
+swiftwave/scripts/sw-logs.sh deployment <deployment-id> # build/deploy logs
 ```
 
 ## The scripts

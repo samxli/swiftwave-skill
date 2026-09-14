@@ -80,8 +80,12 @@ For new code on an EXISTING app, `updateApplication(id, input)` takes the
 same `ApplicationInput` — re-fetch the live config and resubmit it, swapping
 only the code fields. Unlike create, this input REPLACES the whole config,
 so never feed create-time defaults (they would reset replicas/resources/
-volumes). All config fields round-trip from the `Application` type, but
-`dockerfile` and `sourceCodeCompressedFileName` exist on the input only:
+volumes). All config fields round-trip from the `Application` type —
+including `configMounts.content` (`ConfigMountInput.content` is `String!`,
+so a round trip that skips it 422s; the content is secret-bearing, don't
+print it) — except `buildArgs`, which live on `Deployment`
+(`latestDeployment { buildArgs { key value } }`), and `dockerfile` /
+`sourceCodeCompressedFileName`, which exist on the input only:
 re-upload + `dockerConfigGenerator` again (steps above).
 `scripts/sw-redeploy-app.sh` does all of this (verified live: ~7s from
 mutation to `deployed`, rolling update with graceful shutdown).

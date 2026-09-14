@@ -6,8 +6,8 @@
 # -e flags become environmentVariables (repeatable, KEY=VALUE, split on first =).
 # -e @<file> reads KEY=VALUE lines from a file instead — use it for secrets
 # so passwords never appear in the process list (only the file path does).
-# Default: waits up to 600s via sw-wait-deployment.sh; --no-wait skips and
-# prints the wait command instead.
+# Default: waits up to 600s via sw-wait-deployment.sh; --no-wait (or
+# SW_NO_WAIT=1) skips and prints the wait command instead.
 # Defaults: replicated / 1 replica / 512 MB limit / 128 MB reserved (flags
 # for these can be added when a real deployment needs different values).
 set -euo pipefail
@@ -22,7 +22,7 @@ export SW_TOKEN="${SW_TOKEN:?usage: sw-create-app.sh [<token>] <name> <dir|tar> 
 NAME="${1:?usage: sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE|@file]... [--no-wait] [timeout-secs]}"; shift
 SRC="${1:?usage: sw-create-app.sh [<token>] <name> <dir|tar> [-e KEY=VALUE|@file]... [--no-wait] [timeout-secs]}"; shift
 
-NO_WAIT=0
+NO_WAIT="${SW_NO_WAIT:-0}"
 TIMEOUT=600
 ENV_LIST=""
 # Append KEY=VALUE lines from a file (blank lines, #-comments, and lines
@@ -80,7 +80,11 @@ TAR_FILE="$(printf '%s' "$UPLOAD_JSON" | python3 -c 'import json,sys; print(json
 # 2. Dockerfile text round trip (server echoes the effective Dockerfile).
 GEN_VARS="$(python3 -c 'import json,sys; print(json.dumps({"in": {"sourceType": "sourceCode", "sourceCodeCompressedFileName": sys.argv[1]}}))' "$TAR_FILE")"
 GEN_RESP="$("${SCRIPT_DIR}/sw-graphql.sh" 'query ($in: DockerConfigGeneratorInput!) { dockerConfigGenerator(input: $in) { dockerFile } }' "$GEN_VARS")"
-DOCKERFILE="$(printf '%s' "$GEN_RESP" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["dockerConfigGenerator"]["dockerFile"])')"
+DOCKERFILE="$(printf '%s' "$GEN_RESP" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+if d.get("errors"):
+    sys.exit("GraphQL error: %s" % d["errors"])
+print(d["data"]["dockerConfigGenerator"]["dockerFile"])')"
 
 # 3. Create — variables JSON built in python3 (never string interpolation:
 # the Dockerfile text holds quotes/newlines). See references/application-input.md.
@@ -134,7 +138,11 @@ RESP="$(curl -sS --fail-with-body $(_sw_curl_flags) --max-time 60 -X POST "${SW_
   -H "Authorization: Bearer ${SW_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD")"
-APP_ID="$(printf '%s' "$RESP" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["createApplication"]["id"])')"
+APP_ID="$(printf '%s' "$RESP" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+if d.get("errors"):
+    sys.exit("GraphQL error: %s" % d["errors"])
+print(d["data"]["createApplication"]["id"])')"
 DEP_ID="$(printf '%s' "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]["createApplication"]["latestDeployment"]; print(d["id"] if d else "")')"
 echo "app $APP_ID deployment $DEP_ID"
 

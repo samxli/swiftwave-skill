@@ -99,15 +99,17 @@ SW_PORT="${SW_PORT:-3333}"
 SW_INSECURE="${SW_INSECURE:-1}"
 
 # Tolerate the two common SW_TOKEN mistakes: pasted with the "Bearer "
-# prefix, or padded with whitespace. The scripts add the prefix themselves.
+# prefix (even double-spaced), or padded with whitespace. The scripts add
+# the prefix themselves.
 if [ -n "${SW_TOKEN:-}" ]; then
-  _sw_tok="$(printf '%s' "$SW_TOKEN" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-  case "$_sw_tok" in
-    [Bb][Ee][Aa][Rr][Ee][Rr]\ *)
-      SW_TOKEN="${_sw_tok#* }"
-      echo "sw-env: SW_TOKEN had a 'Bearer ' prefix — trimmed (scripts add it)" >&2 ;;
-    *) SW_TOKEN="$_sw_tok" ;;
-  esac
+  _sw_tok="$(printf '%s' "$SW_TOKEN" | sed -E -e 's/^[[:space:]]*//' -e 's/^[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//' -e 's/[[:space:]]*$//')"
+  if [ "$_sw_tok" != "$SW_TOKEN" ]; then
+    case "$SW_TOKEN" in
+      *[Bb][Ee][Aa][Rr][Ee][Rr]*)
+        echo "sw-env: SW_TOKEN had a 'Bearer ' prefix — trimmed (scripts add it)" >&2 ;;
+    esac
+    SW_TOKEN="$_sw_tok"
+  fi
   unset _sw_tok
 fi
 

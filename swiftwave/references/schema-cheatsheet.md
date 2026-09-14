@@ -14,12 +14,14 @@ server, and credential ids are `Uint!` (numbers, not quoted).
 `upstreamType`, `dockerfile`, `sourceCodeCompressedFileName`,
 `dockerImage` exist on `ApplicationInput` (and `upstreamType` on
 `Deployment`) — NOT on `Application`. Querying them on the type 422s.
+⚠️ `ConfigMountInput.content` is `String!` — round-tripping config
+mounts must query `content` (secret-bearing; don't print it).
 
 ```
 id name hostname command deploymentMode replicas
 environmentVariables { key value }
 persistentVolumeBindings { persistentVolumeID mountingPath }
-configMounts { mountingPath } capabilities sysctls
+configMounts { content mountingPath uid gid } capabilities sysctls
 resourceLimit { memoryMb } reservedResource { memoryMb }
 realtimeInfo { InfoFound DesiredReplicas RunningReplicas DeploymentMode HealthStatus }
 latestDeployment { id status } deployments { id status }
@@ -94,6 +96,10 @@ httpsRedirect authenticationType status createdAt updatedAt
 
 `status`: `pending|applied|deleting|failed` — create/delete are async,
 poll until `applied`/gone (see async notes in `graphql.md`).
+
+Trap: `IngressRuleInput` requires BOTH `applicationId: String!` and
+`externalService: String!` whatever the `targetType` — pass `""` for
+the unused one or the mutation 422s.
 
 ## Domain
 
