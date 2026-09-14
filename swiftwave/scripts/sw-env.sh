@@ -98,6 +98,19 @@ SW_HOST="${SW_HOST:-127.0.0.1}"
 SW_PORT="${SW_PORT:-3333}"
 SW_INSECURE="${SW_INSECURE:-1}"
 
+# Tolerate the two common SW_TOKEN mistakes: pasted with the "Bearer "
+# prefix, or padded with whitespace. The scripts add the prefix themselves.
+if [ -n "${SW_TOKEN:-}" ]; then
+  _sw_tok="$(printf '%s' "$SW_TOKEN" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  case "$_sw_tok" in
+    [Bb][Ee][Aa][Rr][Ee][Rr]\ *)
+      SW_TOKEN="${_sw_tok#* }"
+      echo "sw-env: SW_TOKEN had a 'Bearer ' prefix — trimmed (scripts add it)" >&2 ;;
+    *) SW_TOKEN="$_sw_tok" ;;
+  esac
+  unset _sw_tok
+fi
+
 # Dependency check: fail fast with a clear message instead of obscure errors.
 for _dep in curl python3; do
   if ! command -v "$_dep" >/dev/null 2>&1; then

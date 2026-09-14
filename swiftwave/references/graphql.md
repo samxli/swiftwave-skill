@@ -24,8 +24,9 @@ Source: `swiftwave-org/swiftwave@v2:docs/api_docs.md` points to
 ## Schema: introspection is DISABLED on stock v2
 
 `{ __schema ... }` returns `{"errors":[{"message":"introspection disabled"}]}`.
-`scripts/sw-introspect.sh` detects this and exits 2. Use the versioned
-schema as source of truth instead:
+Might be enabled on a non-stock build — `scripts/sw-introspect.sh` is the
+live check (exits 2 on stock). Either way the versioned schema files are
+the source of truth:
 
 - `https://github.com/swiftwave-org/swiftwave/tree/v2/swiftwave_service/graphql/schema`
 - Key files: `application.graphqls` (`ApplicationInput`, `createApplication`,
@@ -39,8 +40,8 @@ volume creation needs dummy nfs/cifs configs) are tabulated in
 `references/schema-cheatsheet.md` — check it before hand-writing a
 query. Pinned raw URLs for all 32 schema files live there too.
 
-Only re-check live introspection after an upgrade in case it gets enabled;
-do not rely on it.
+Only re-check live introspection after an upgrade; do not build anything
+that depends on it.
 
 ## Conventions
 

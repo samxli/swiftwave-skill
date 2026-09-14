@@ -93,12 +93,18 @@ if [ -n "${SW_TOKEN:-}" ]; then
 d=json.load(sys.stdin)
 svrs=(d.get("data") or {}).get("servers") or []
 for s in svrs:
-    print(s["hostname"], s["status"], s["swarmNodeStatus"], "proxy" if s["proxyEnabled"] else "noproxy")' 2>/dev/null || true)"
+    print(s.get("hostname") or "?", s.get("status") or "unknown",
+          s.get("swarmNodeStatus") or "unknown",
+          "proxy" if s.get("proxyEnabled") else "noproxy")' 2>/dev/null || true)"
   if [ -z "$SRV" ]; then
     echo "SKIP: server status query failed (expired SW_TOKEN or GraphQL error) — re-login and retry"
   else
     echo "$SRV" | while read -r _h st _s _p; do
-      if [ "$st" = "online" ]; then pass "server $_h: online"; else fail "server $_h: $st"; fi
+      # 'unknown' (server registered but never reported) is not a failure.
+      case "$st" in
+        online|unknown|needs_setup|preparing) pass "server $_h: $st" ;;
+        *) fail "server $_h: $st" ;;
+      esac
     done
   fi
 else

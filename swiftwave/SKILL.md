@@ -1,6 +1,6 @@
 ---
 name: swiftwave
-description: Use when managing SwiftWave v2 via CLI or API, co-located or remote. Triggers on swiftwave CLI, swiftwave GraphQL, REST auth, upload code, persistent volumes, ingress, stack deploy, task queue, TLS, service, postgres, localregistry, remote server, SW_HOST, SW_TOKEN, deployment logs, runtime logs.
+description: Use when managing a SwiftWave v2 PaaS — deploy apps from source or image, domains/TLS, ingress, volumes, users — via CLI (co-located) or API (remote). Triggers on swiftwave, SW_HOST, SW_TOKEN, "deploy my app", upload code, persistent volumes, stack compose, deployment logs, runtime logs, task queue.
 ---
 
 # SwiftWave (CLI + API, co-located or remote)
@@ -37,6 +37,17 @@ dashboard/UI operations.
   never "test" destructive mutations; keep a recovery path (server-root
   `swiftwave user create`) for lockout.
 
+## Start here (preflight)
+
+1. **Reachability**: `./scripts/sw-doctor.sh` — read-only API + registry
+   health check; run it first for any failure-triage or first-contact task.
+2. **Auth**: only when a step needs the API and `SW_TOKEN` is unset:
+   `sw-login.sh` needs `SW_USER`/`SW_PASS` (shell env or the env file).
+   Put the token in the environment — `export SW_TOKEN=...` — not a script
+   argument (process list); positional tokens must start with `eyJ`.
+3. **Never hand-roll curl**: the scripts cover every operation, including
+   auth, upload, logs, and waits. Existing `SW_TOKEN`s are reused as-is.
+
 ## Scope and assumptions
 
 - Version pin: `v2` branch, latest known `2.23.1-1`. Co-located,
@@ -50,6 +61,27 @@ dashboard/UI operations.
   `deleteUser`, `restartSystem`, volume restore, app/stack destroy.
 
 ## Fast paths
+
+### 0. Golden path: source deploy → domain → TLS
+
+```bash
+./scripts/sw-doctor.sh            # 0. reachability (add SW_TOKEN for server status)
+export SW_TOKEN="$(./scripts/sw-login.sh)"   # 1. auth (skip if SW_TOKEN is set)
+./scripts/sw-create-app.sh hello ./hello -e @secrets.env   # 2. deploy + wait
+# -> "app <uuid> deployment <dep-uuid>"
+./scripts/sw-logs.sh runtime <app-id> last_1_hour           # 3. verify it runs
+# 4. domain + TLS (all mutations async — poll to applied/issued, never trust the response)
+./scripts/sw-graphql.sh 'mutation { addDomain(input: {name: "hello.example.com"}) { id name } }'
+./scripts/sw-graphql.sh 'mutation { createIngressRule(input: {domainId: <id>, targetType: application, applicationId: "<app-id>", protocol: http, port: 80, targetPort: <container-port>}) { id status } }'
+./scripts/sw-graphql.sh 'mutation { issueSSL(id: <domain-id>) { sslStatus } }'
+```
+
+- The old port-80 rule must be deleted before enabling HTTPS redirect on
+  the same domain (`enableHttpsRedirectIngressRule(id:)`).
+- Secrets go via `-e @file` (KEY=VALUE lines) — never bare `-e SECRET=...`
+  (visible in `ps`).
+- Teardown after a test deploy: `./scripts/sw-destroy-app.sh <app-id|name>`
+  (interactive confirm) — volumes/domains survive on purpose; see § Scripts.
 
 ### 1. CLI ops — CO-LOCATED ONLY
 

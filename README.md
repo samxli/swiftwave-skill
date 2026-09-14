@@ -120,9 +120,10 @@ Prefer `https` (SwiftWave's `use_tls`) or an SSH tunnel — over plain
 Ask your agent, or run the scripts yourself:
 
 ```bash
-source scripts/sw-env.sh
+./scripts/sw-doctor.sh                         # health check (read-only, no login)
 export SW_TOKEN="$(./scripts/sw-login.sh)"     # login, token stays in env
-./scripts/sw-doctor.sh                          # health check
+./scripts/sw-create-app.sh hello ./hello       # deploy a folder + wait for it
+./scripts/sw-logs.sh runtime <app-id>          # container logs
 ./scripts/sw-graphql.sh '{ applications { id name } }'
 ./scripts/sw-logs.sh deployment <deployment-id> # build/deploy logs
 ```
@@ -134,9 +135,11 @@ export SW_TOKEN="$(./scripts/sw-login.sh)"     # login, token stays in env
 | `sw-env.sh` | Shared config — source it first (host, port, scheme, remote detection). Loads `SW_*` from `.env.swiftwave` / `~/.config/swiftwave/env` / `$SW_ENV_FILE` |
 | `sw-login.sh` | Log in, print JWT to stdout only |
 | `sw-graphql.sh` | Run any GraphQL query/mutation |
-| `sw-logs.sh` | Stream deployment or container logs (websocket, remote-friendly) |
+| `sw-create-app.sh` | One-shot source deploy: upload → create → wait for the deployment |
+| `sw-destroy-app.sh` | Delete an app + its ingress rules (domains/volumes survive on purpose) |
 | `sw-upload-code.sh` | Tar + upload a source folder with a Dockerfile |
 | `sw-wait-deployment.sh` | Poll a deployment until it succeeds or fails |
+| `sw-logs.sh` | Stream deployment or container logs (websocket, remote-friendly) |
 | `sw-doctor.sh` | Read-only health check: API, image registry, server status |
 | `sw-introspect.sh` | Check whether GraphQL introspection is enabled (normally off) |
 

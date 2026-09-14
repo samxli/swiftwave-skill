@@ -8,7 +8,8 @@
 # so passwords never appear in the process list (only the file path does).
 # Default: waits up to 600s via sw-wait-deployment.sh; --no-wait skips and
 # prints the wait command instead.
-# ponytail: defaults fixed (replicated/1/512/128); add flags when a deploy actually needs otherwise.
+# Defaults: replicated / 1 replica / 512 MB limit / 128 MB reserved (flags
+# for these can be added when a real deployment needs different values).
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
